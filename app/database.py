@@ -1,7 +1,6 @@
 from neo4j import AsyncDriver, AsyncGraphDatabase
 from psycopg_pool import AsyncConnectionPool
 from pymongo import AsyncMongoClient
-from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.logger import logger
