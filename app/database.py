@@ -1,4 +1,5 @@
 from neo4j import AsyncDriver, AsyncGraphDatabase
+from psycopg_pool import AsyncConnectionPool
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.asynchronous.database import AsyncDatabase
@@ -11,6 +12,7 @@ class DatabaseManager:
     instance: DatabaseManager | None = None
     mongo_client: AsyncMongoClient | None = None
     neo4j_driver: AsyncDriver | None = None
+    postgres_pool: AsyncConnectionPool | None = None
     securechain_db: AsyncDatabase | None = None
     vulnerabilities_db: AsyncDatabase | None = None
 
@@ -42,6 +44,23 @@ class DatabaseManager:
             )
             logger.info("Neo4j driver initialized")
 
+        if self.postgres_pool is None:
+            logger.info("Initializing PostgreSQL connection pool...")
+            conninfo = (
+                f"host={settings.POSTGRES_HOST} "
+                f"port={settings.POSTGRES_PORT} "
+                f"dbname={settings.POSTGRES_DB} "
+                f"user={settings.POSTGRES_USER} "
+                f"password={settings.POSTGRES_PASSWORD}"
+            )
+            self.postgres_pool = AsyncConnectionPool(
+                conninfo=conninfo,
+                min_size=settings.DB_MIN_POOL_SIZE,
+                max_size=settings.DB_MAX_POOL_SIZE,
+            )
+            await self.postgres_pool.open()
+            logger.info("PostgreSQL connection pool initialized")
+
     async def close(self) -> None:
         if self.mongo_client:
             logger.info("Closing MongoDB connection...")
@@ -57,22 +76,18 @@ class DatabaseManager:
             self.neo4j_driver = None
             logger.info("Neo4j driver closed")
 
-    def get_smts_collection(self) -> AsyncCollection:
-        if self.securechain_db is None:
-            raise RuntimeError("Database not initialized. Call initialize() first.")
-        return self.securechain_db.get_collection(settings.DB_SMTS_COLLECTION)
-
-    def get_operation_results_collection(self) -> AsyncCollection:
-        if self.securechain_db is None:
-            raise RuntimeError("Database not initialized. Call initialize() first.")
-        return self.securechain_db.get_collection(settings.DB_OPERATION_RESULT_COLLECTION)
-
-    def get_api_keys_collection(self) -> AsyncCollection:
-        if self.securechain_db is None:
-            raise RuntimeError("Database not initialized. Call initialize() first.")
-        return self.securechain_db.get_collection(settings.DB_API_KEY_COLLECTION)
+        if self.postgres_pool:
+            logger.info("Closing PostgreSQL connection pool...")
+            await self.postgres_pool.close()
+            self.postgres_pool = None
+            logger.info("PostgreSQL connection pool closed")
 
     def get_neo4j_driver(self) -> AsyncDriver:
         if self.neo4j_driver is None:
             raise RuntimeError("Database not initialized. Call initialize() first.")
         return self.neo4j_driver
+
+    def get_postgres_pool(self) -> AsyncConnectionPool:
+        if self.postgres_pool is None:
+            raise RuntimeError("Database not initialized. Call initialize() first.")
+        return self.postgres_pool
